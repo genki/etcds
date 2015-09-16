@@ -1,12 +1,16 @@
 # Etcds
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/etcds`. To experiment with that code, run `bin/console` for an interactive prompt.
-
-TODO: Delete this and the text above, and describe your gem
+A etcd cluster manager.
 
 ## Installation
 
-Add this line to your application's Gemfile:
+etcd depends on etcd-ca, so you should install it in advance like this:
+
+```
+go get github.com/coreos/etcd-ca
+```
+
+After that, add this line to your application's Gemfile:
 
 ```ruby
 gem 'etcds'
@@ -22,7 +26,24 @@ Or install it yourself as:
 
 ## Usage
 
-TODO: Write usage instructions here
+Before run etcds command, you should prepare the configuration file
+`etcds.yml` at current directory.
+
+% etcds [sub command] [options] [args]
+
+```
+Available sub commands:
+  ctl      [name] commands      pass commands to etcdctl
+  health   show cluster health for all nodes
+  init     prepare ca files for all nodes
+  install  [names...]   install ca files to the host
+  ls       list up nodes
+  member   show member list for all nodes
+  ps       list up etcd containers
+  rm       [names...]   remove stopped nodes
+  stop     [names...]   stop nodes
+  up       [names...]   prepare and activate etcd
+```
 
 ## Development
 
