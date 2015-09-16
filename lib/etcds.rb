@@ -9,7 +9,7 @@ class Etcds
     config = './etcds.yml'
     case ARGV.first
     when '-f'; _, config = ARGV.slice! 0, 2
-    when '-v'; puts "etcds version 0.1.0"; exit
+    when '-v'; puts "etcds version #{VERSION}"; exit
     when '-h', nil
       system "#{$0} -v"
       system "etcd-ca -v"
