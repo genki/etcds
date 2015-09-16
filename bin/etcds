@@ -1,3 +1,3 @@
 #!/usr/bin/ruby
-require 'etcds'
+require File.join(__dir__, '../lib/etcds')
 Etcds.new.send *ARGV

@@ -1,5 +1,6 @@
 require "etcds/version"
 require "yaml"
+require "colorize"
 
 class Etcds
   LABEL_BASE = 'com.s21g.etcds'
@@ -68,7 +69,7 @@ class Etcds
   H[:ps] = 'list up etcd containers'
   def ps(*args)
     @nodes.keys.each do |n|
-      puts "Node #{n}:"
+      puts "Node #{n}:".on_blue
       puts docker(n, "ps -f label=#{LABEL_BASE}.name #{args*' '}") + "\n"
     end
   end
@@ -162,10 +163,10 @@ private
   def for_all_run(&block)
     @nodes.keys.each do |n|
       if run?(n)
-        puts "#{n}:"
+        puts "Node #{n}:".on_blue
         block[n]
       else
-        puts "#{n}: not running"
+        puts "Node #{n}: not running".on_yellow
       end
     end
   end
