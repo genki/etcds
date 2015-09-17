@@ -38,12 +38,12 @@ class Etcds
   end
 
   H[:init] = 'prepare ca files for all nodes'
-  def init
+  def init(domain = 'etcd')
     etcd_ca "init --passphrase ''"
     @nodes.each do |k, v|
       ip = v['ip']
       name = k
-      etcd_ca "new-cert --passphrase '' --ip #{ip} #{name}"
+      etcd_ca "new-cert --passphrase '' --ip #{ip} --domain #{domain} #{name}"
       etcd_ca "sign --passphrase '' #{name}"
       etcd_ca "export --insecure --passphrase '' #{name}" +
         " | tar -C ./certs -xvf -"
@@ -57,11 +57,13 @@ class Etcds
   H[:install] = "[names...]\tinstall ca files to the host"
   def install(*hosts)
     hosts.each do |to|
-      %w[ca.crt crt key.insecure].each do |what|
-        name = "#{to}.#{what}"
-        scp "./certs/#{name} #{to}:/tmp/"
-        ssh to, "mv /tmp/#{name} /etc/docker/certs.d"
-        ssh to, "chown root:root /etc/docker/certs.d/#{name}"
+      %W[
+        #{to}.ca.crt #{to}.crt #{to}.key.insecure
+        ca.crt client.crt client.key.insecure
+      ].each do |what|
+        scp "./certs/#{what} #{to}:/tmp/"
+        ssh to, "mv /tmp/#{what} /etc/docker/certs.d"
+        ssh to, "chown root:root /etc/docker/certs.d/#{what}"
       end
     end
   end
@@ -131,10 +133,10 @@ class Etcds
   end
 
   H[:health] = 'show cluster health for all nodes'
-  def health; for_all_run{|n| ctl n, 'cluster-health'} end
+  def health; for_all{|n| ctl n, 'cluster-health'} end
 
   H[:member] = 'show member list for all nodes'
-  def member; for_all_run{|n| ctl n, 'member list'} end
+  def member; for_all{|n| ctl n, 'member list'} end
 
   H[:ctl] = "[name] commands\tpass commands to etcdctl"
   def ctl(n, *args)
@@ -160,7 +162,7 @@ private
     IO.popen({'DOCKER_HOST' => "tcp://#{ip}:2376"}, "docker #{cmd}").read
   end
 
-  def for_all_run(&block)
+  def for_all(&block)
     @nodes.keys.each do |n|
       if run?(n)
         puts "Node #{n}:".on_blue
