@@ -1,6 +1,8 @@
 require "etcds/version"
 require "yaml"
 require "colorize"
+require "net/https"
+require "openssl"
 
 class Etcds
   LABEL_BASE = 'com.s21g.etcds'
@@ -52,6 +54,9 @@ class Etcds
     etcd_ca "new-cert --passphrase '' client"
     etcd_ca "sign --passphrase '' client"
     etcd_ca "export --insecure --passphrase '' client | tar -C ./certs -xvf -"
+    unless File.exist?(discovery_path)
+      system "curl https://discovery.etcd.io/new > #{discovery_path}"
+    end
   end
 
   H[:install] = "[names...]\tinstall ca files to the host"
@@ -103,33 +108,35 @@ class Etcds
     end
   end
 
-  H[:up] = "[names...]\tprepare and activate etcd"
-  def up(*names)
-    names.each do |n|
-      node = @nodes[n]
-      ip = node['ip']
-      stop n if run? n
-      rm n if exist? n
-      docker n, "run -d -p 2379:2379 -p 2380:2380 --name etcd" +
-        " -e ETCD_TRUSTED_CA_FILE=/certs/#{n}.ca.crt" +
-        " -e ETCD_CERT_FILE=/certs/#{n}.crt" +
-        " -e ETCD_KEY_FILE=/certs/#{n}.key.insecure" +
-        " -e ETCD_CLIENT_CERT_AUTH=1" +
-        " -e ETCD_PEER_TRUSTED_CA_FILE=/certs/#{n}.ca.crt" +
-        " -e ETCD_PEER_CERT_FILE=/certs/#{n}.crt" +
-        " -e ETCD_PEER_KEY_FILE=/certs/#{n}.key.insecure" +
-        " -e ETCD_PEER_CLIENT_CERT_AUTH=1" +
-        " -e ETCD_HEARTBEAT_INTERVAL=100" +
-        " -e ETCD_ELECTION_TIMEOUT=2500" +
-        " -v /etc/docker/certs.d:/certs" +
-        " -l #{LABEL_BASE}.name=#{n}" +
-        " quay.io/coreos/etcd" +
-        " -name #{n}" +
-        " -listen-client-urls https://0.0.0.0:2379" +
-        " -listen-peer-urls https://0.0.0.0:2380" +
-        " -advertise-client-urls https://#{ip}:2379"
-      puts "etcd is started at #{n}"
-    end
+  H[:up] = "name\tprepare and activate etcd"
+  def up(n, *args)
+    node = @nodes[n]
+    ip = node['ip']
+    stop n if run? n
+    rm n if exist? n
+    docker n, "run -d -p 2379:2379 -p 2380:2380 --name etcd" +
+      " -e ETCD_TRUSTED_CA_FILE=/certs/#{n}.ca.crt" +
+      " -e ETCD_CERT_FILE=/certs/#{n}.crt" +
+      " -e ETCD_KEY_FILE=/certs/#{n}.key.insecure" +
+      " -e ETCD_CLIENT_CERT_AUTH=1" +
+      " -e ETCD_PEER_TRUSTED_CA_FILE=/certs/#{n}.ca.crt" +
+      " -e ETCD_PEER_CERT_FILE=/certs/#{n}.crt" +
+      " -e ETCD_PEER_KEY_FILE=/certs/#{n}.key.insecure" +
+      " -e ETCD_PEER_CLIENT_CERT_AUTH=1" +
+      " -e ETCD_HEARTBEAT_INTERVAL=100" +
+      " -e ETCD_ELECTION_TIMEOUT=2500" +
+      " -v /var/lib/etcd" +
+      " -v /etc/docker/certs.d:/certs" +
+      " -v /etc/ssl/certs:/etc/ssl/certs" +
+      " -l #{LABEL_BASE}.name=#{n}" +
+      " quay.io/coreos/etcd" +
+      " -name #{n} -data-dir /var/lib/etcd/#{n}.etcd" +
+      " -listen-client-urls https://0.0.0.0:2379" +
+      " -listen-peer-urls https://0.0.0.0:2380" +
+      " -advertise-client-urls https://#{ip}:2379" +
+      " -initial-advertise-peer-urls https://#{ip}:2380" +
+      " -discovery #{discovery} " + args*' '
+    puts "etcd is started at #{n}"
   end
 
   H[:health] = 'show cluster health for all nodes'
@@ -148,7 +155,23 @@ class Etcds
       " --ca-file ./certs/#{n}.ca.crt " + args*' '
   end
 
+  H[:get] = "name:/path\tGET via ssl"
+  def get(query)
+    n, path = query.split(':', 2)
+    node = @nodes[n]
+    ip = node['ip']
+    puts https(ip, 2379).get(path).body
+  end
+
+  def discover
+    system "curl #{discovery}"
+  end
+
 private
+  def load_cert(path) OpenSSL::X509::Certificate.new open(path).read end
+  def load_key(path) OpenSSL::PKey.read open(path).read end
+  def discovery_path; './certs/discovery' end
+  def discovery; open(discovery_path).read.chomp end
   def etcd_ca(cmd) system "etcd-ca --depot-path ./certs #{cmd}" end
   def dm(cmd) system "docker-machine #{cmd}" end
   def scp(cmd) dm "scp #{cmd}" end
@@ -170,6 +193,16 @@ private
       else
         puts "Node #{n}: not running".on_yellow
       end
+    end
+  end
+
+  def https(ip, port)
+    Net::HTTP.new(ip, port).tap do |c|
+      c.use_ssl = true
+      c.ca_file = "./certs/ca.crt"
+      c.cert = load_cert "./certs/client.crt"
+      c.key = load_key "./certs/client.key.insecure"
+      c.verify_mode = OpenSSL::SSL::VERIFY_PEER
     end
   end
 end
